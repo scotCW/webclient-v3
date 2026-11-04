@@ -74,7 +74,16 @@ export function storedUser(): ApiUser | null {
   }
 }
 
+const signOutListeners = new Set<() => void>()
+
+/** Called whenever the session ends: sign-out, or the server rejecting the token. */
+export function onSignedOut(fn: () => void): () => void {
+  signOutListeners.add(fn)
+  return () => signOutListeners.delete(fn)
+}
+
 function storeLogin(token: string, user: ApiUser | null) {
+  const wasSignedIn = !!accessToken()
   try {
     if (token) localStorage.setItem(TOKEN, token)
     else localStorage.removeItem(TOKEN)
@@ -83,6 +92,7 @@ function storeLogin(token: string, user: ApiUser | null) {
   } catch {
     /* storage unavailable */
   }
+  if (wasSignedIn && !token) signOutListeners.forEach((fn) => fn())
 }
 
 async function request<T>(method: 'GET' | 'POST', path: string, body?: unknown, auth = true): Promise<T> {
@@ -168,6 +178,19 @@ export async function currentUser(): Promise<ApiUser> {
   const user = await request<ApiUser>('POST', '/api/currentUser', { id: myId(), uuid: myId() })
   storeLogin(accessToken(), user)
   return user
+}
+
+export interface ManagedServer {
+  idServer: string
+  relayServer: string
+  key: string
+}
+
+/** Server settings for signed-in users; the API only hands these out with a valid token. */
+export async function managedServer(): Promise<ManagedServer> {
+  const res = await request<{ data?: { id_server?: string; relay_server?: string; key?: string } }>('POST', '/api/server-config-v2')
+  const d = res.data ?? {}
+  return { idServer: d.id_server ?? '', relayServer: d.relay_server ?? '', key: d.key ?? '' }
 }
 
 export async function personalAddressBook(): Promise<string> {

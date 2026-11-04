@@ -14,6 +14,7 @@ export interface ServerConfig {
 }
 
 const OVERRIDES = 'v3:server'
+const MANAGED = 'v3:managed-server'
 
 function read(key: string): string {
   try {
@@ -42,7 +43,38 @@ export function loadServerConfig(): ServerConfig {
   } catch {
     /* ignore broken overrides */
   }
+  // Settings from the account server win: they are what the operator configured.
+  const managed = loadManagedServer()
+  if (managed) {
+    if (managed.idServer) defaults.idServer = managed.idServer
+    if (managed.relayServer) defaults.relayServer = managed.relayServer
+    if (managed.key) defaults.key = managed.key
+  }
   return defaults
+}
+
+export interface Managed {
+  idServer: string
+  relayServer: string
+  key: string
+}
+
+export function loadManagedServer(): Managed | null {
+  try {
+    return JSON.parse(localStorage.getItem(MANAGED) || 'null') as Managed | null
+  } catch {
+    return null
+  }
+}
+
+/** Remember (or with null, forget) the settings the account server provided. */
+export function setManagedServer(m: Managed | null) {
+  try {
+    if (m) localStorage.setItem(MANAGED, JSON.stringify(m))
+    else localStorage.removeItem(MANAGED)
+  } catch {
+    /* storage unavailable */
+  }
 }
 
 export function saveServerOverrides(cfg: Partial<ServerConfig>) {

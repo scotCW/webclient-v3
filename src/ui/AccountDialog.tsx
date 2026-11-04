@@ -1,17 +1,18 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
-import { ApiError, login, loginOptions, oidcPoll, oidcStart } from '../api/client'
-import { Dialog } from './components/Dialog'
+import { ApiError, ApiUser, login, loginOptions, oidcPoll, oidcStart } from '../api/client'
 
-export function AccountDialog(props: { onClose: () => void; onSignedIn: () => void }) {
+/** Username/password and OIDC sign-in against the account server. */
+export function SignInForm(props: { onSignedIn: (user: ApiUser) => void; onCancel?: () => void }) {
   const [providers, setProviders] = useState<string[]>([])
+  const [passwordLogin, setPasswordLogin] = useState(true)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const polling = useRef(false)
 
   useEffect(() => {
-    void loginOptions().then((ops) =>
-      setProviders(ops.filter((o) => o.startsWith('oidc/')).map((o) => o.slice(5))),
-    )
+    void loginOptions().then((ops) => {
+      setProviders(ops.filter((o) => o.startsWith('oidc/')).map((o) => o.slice(5)))
+    })
     return () => {
       polling.current = false
     }
@@ -26,10 +27,12 @@ export function AccountDialog(props: { onClose: () => void; onSignedIn: () => vo
     setBusy(true)
     setError('')
     try {
-      await login(username, password)
-      props.onSignedIn()
+      props.onSignedIn(await login(username, password))
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Sign-in failed')
+      const msg = err instanceof ApiError ? err.message : 'Sign-in failed'
+      // The server refuses password logins when only single sign-on is allowed.
+      if (/password login/i.test(msg)) setPasswordLogin(false)
+      setError(msg)
     } finally {
       setBusy(false)
     }
@@ -48,7 +51,7 @@ export function AccountDialog(props: { onClose: () => void; onSignedIn: () => vo
         const user = await oidcPoll(code)
         if (user) {
           popup?.close()
-          props.onSignedIn()
+          props.onSignedIn(user)
           return
         }
       }
@@ -61,33 +64,35 @@ export function AccountDialog(props: { onClose: () => void; onSignedIn: () => vo
   }
 
   return (
-    <Dialog title="Sign in" onClose={props.onClose}>
-      <p class="muted" style={{ marginTop: 0 }}>
-        Sign in to your account on this server to see your address book and devices.
-      </p>
-      <form onSubmit={submit}>
-        <div class="field">
-          <label for="username">Username</label>
-          <input id="username" name="username" autoComplete="username" autoFocus />
-        </div>
-        <div class="field">
-          <label for="password">Password</label>
-          <input id="password" name="password" type="password" autoComplete="current-password" />
-        </div>
-        {error && <p class="error-text">{error}</p>}
-        <div class="buttons">
-          <button type="button" class="btn" onClick={props.onClose}>
-            Cancel
-          </button>
-          <button type="submit" class="btn primary" disabled={busy}>
-            Sign in
-          </button>
-        </div>
-      </form>
+    <>
+      {passwordLogin && (
+        <form onSubmit={submit}>
+          <div class="field">
+            <label for="username">Username</label>
+            <input id="username" name="username" autoComplete="username" autoFocus />
+          </div>
+          <div class="field">
+            <label for="password">Password</label>
+            <input id="password" name="password" type="password" autoComplete="current-password" />
+          </div>
+          {error && <p class="error-text">{error}</p>}
+          <div class="buttons">
+            {props.onCancel && (
+              <button type="button" class="btn" onClick={props.onCancel}>
+                Cancel
+              </button>
+            )}
+            <button type="submit" class="btn primary" disabled={busy}>
+              Sign in
+            </button>
+          </div>
+        </form>
+      )}
+      {!passwordLogin && error && <p class="error-text">{error}</p>}
       {providers.length > 0 && (
         <>
           <p class="muted" style={{ textAlign: 'center', margin: '16px 0 8px' }}>
-            or continue with
+            {passwordLogin ? 'or continue with' : 'Continue with'}
           </p>
           <div class="row" style={{ justifyContent: 'center', flexWrap: 'wrap' }}>
             {providers.map((p) => (
@@ -98,6 +103,25 @@ export function AccountDialog(props: { onClose: () => void; onSignedIn: () => vo
           </div>
         </>
       )}
-    </Dialog>
+    </>
+  )
+}
+
+/** Shown instead of the app until the visitor signs in. */
+export function SignInPage(props: { onSignedIn: (user: ApiUser) => void; notice?: string }) {
+  return (
+    <div class="signin-page">
+      <div class="card signin-card">
+        <div class="row" style={{ gap: 10, marginBottom: 6 }}>
+          <img src="./favicon.svg" width={32} height={32} alt="" />
+          <h2 style={{ margin: 0 }}>Remote Desktop Web Client</h2>
+        </div>
+        <p class="muted" style={{ marginTop: 6 }}>
+          Sign in with your account on this server to continue.
+        </p>
+        {props.notice && <p class="error-text">{props.notice}</p>}
+        <SignInForm onSignedIn={props.onSignedIn} />
+      </div>
+    </div>
   )
 }

@@ -1,10 +1,11 @@
-import { FolderOpen, LogIn, LogOut, Monitor, MoreHorizontal, Settings as SettingsIcon, SquareTerminal, Star, Trash2 } from 'lucide-preact'
+import { BookPlus, FolderOpen, LogIn, LogOut, Monitor, MoreHorizontal, Settings as SettingsIcon, SquareTerminal, Star, Trash2 } from 'lucide-preact'
 import { useEffect, useMemo, useState } from 'preact/hooks'
 import {
   AbPeer,
   ApiUser,
   accessToken,
   accessibleDevices,
+  addPeerToAddressBook,
   addressBookPeers,
   currentUser,
   logout,
@@ -14,7 +15,7 @@ import {
 } from '../api/client'
 import { loadServerConfig } from '../core/config'
 import { hasWebCodecs } from '../core/video'
-import { PeerRecord, favorites, forgetPeer, recentPeers, setFavorite } from '../store/prefs'
+import { PeerRecord, favorites, forgetPeer, recentPeers, savedPassword, setFavorite } from '../store/prefs'
 import { cleanPeerId, useApp } from './state'
 
 type ListTab = 'recent' | 'favorites' | 'ab' | 'devices'
@@ -24,6 +25,9 @@ interface PeerCardData {
   name: string
   sub: string
   platform?: string
+  hostname?: string
+  username?: string
+  alias?: string
   hash?: string
 }
 
@@ -114,6 +118,9 @@ export function Home(props: { revision: number }) {
       name: r.alias || r.hostname || r.id,
       sub: [r.alias || r.hostname ? r.id : '', r.username, r.platform].filter(Boolean).join(' · '),
       platform: r.platform,
+      hostname: r.hostname,
+      username: r.username,
+      alias: r.alias,
     })
     if (tab === 'recent') return recent.map(fromRecord)
     if (tab === 'favorites') return favs.map((id) => fromRecord(recent.find((r) => r.id === id) ?? { id }))
@@ -257,6 +264,28 @@ export function Home(props: { revision: number }) {
                   peer={c}
                   favorite={favs.includes(c.id)}
                   removable={tab === 'recent'}
+                  onAddToAddressBook={
+                    user && (tab === 'recent' || tab === 'favorites')
+                      ? async () => {
+                          try {
+                            const guid = await personalAddressBook()
+                            await addPeerToAddressBook(guid, {
+                              id: c.id,
+                              alias: c.alias,
+                              hostname: c.hostname,
+                              username: c.username,
+                              platform: c.platform,
+                              hash: savedPassword(c.id) ?? undefined,
+                              tags: [],
+                            })
+                            setListError('')
+                            setTab('ab')
+                          } catch (e) {
+                            setListError(e instanceof Error ? e.message : String(e))
+                          }
+                        }
+                      : undefined
+                  }
                   onConnect={(kind) => connect(kind, c.id, c.hash)}
                   onToggleFavorite={() => {
                     setFavorite(c.id, !favs.includes(c.id))
@@ -280,6 +309,7 @@ function PeerCard(props: {
   peer: PeerCardData
   favorite: boolean
   removable: boolean
+  onAddToAddressBook?: () => void
   onConnect: (kind: 'remote' | 'file' | 'terminal') => void
   onToggleFavorite: () => void
   onRemove: () => void
@@ -314,6 +344,18 @@ function PeerCard(props: {
           <button class="btn" style={{ border: 'none' }} onClick={() => props.onConnect('terminal')}>
             <SquareTerminal size={16} /> Terminal
           </button>
+          {props.onAddToAddressBook && (
+            <button
+              class="btn"
+              style={{ border: 'none' }}
+              onClick={() => {
+                setMenu(false)
+                props.onAddToAddressBook?.()
+              }}
+            >
+              <BookPlus size={16} /> Add to address book
+            </button>
+          )}
           {props.removable && (
             <button class="btn danger" style={{ border: 'none' }} onClick={props.onRemove}>
               <Trash2 size={16} /> Remove from recent

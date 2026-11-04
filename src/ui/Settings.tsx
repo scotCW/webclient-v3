@@ -1,5 +1,5 @@
 import { useState } from 'preact/hooks'
-import { ServerConfig, loadServerConfig, loadServerOverrides, saveServerOverrides } from '../core/config'
+import { ServerConfig, loadManagedServer, loadServerConfig, loadServerOverrides, saveServerOverrides } from '../core/config'
 import { Prefs, loadPrefs, savePrefs } from '../store/prefs'
 import { Dialog } from './components/Dialog'
 
@@ -11,6 +11,7 @@ export function applyTheme(theme: Prefs['theme']) {
 
 export function SettingsDialog(props: { onClose: () => void }) {
   const defaults = loadServerConfig()
+  const managed = loadManagedServer()
   const [server, setServer] = useState<Partial<ServerConfig>>(loadServerOverrides())
   const [prefs, setPrefs] = useState<Prefs>(loadPrefs())
 
@@ -45,13 +46,33 @@ export function SettingsDialog(props: { onClose: () => void }) {
       <h3 class="muted" style={{ fontSize: 12, textTransform: 'uppercase' }}>
         Server
       </h3>
-      <p class="muted" style={{ marginTop: 0 }}>
-        Leave a field empty to use the value provided by this site.
-      </p>
-      {serverField('idServer', 'ID server', 'host or host:port')}
-      {serverField('relayServer', 'Relay server', 'optional, the ID server names one')}
-      {serverField('key', 'Key', 'server public key (base64)')}
-      {serverField('apiServer', 'API server', 'https://…')}
+      {managed ? (
+        <>
+          <p class="muted" style={{ marginTop: 0 }}>
+            Provided by your account server.
+          </p>
+          <dl class="kv" style={{ marginBottom: 12 }}>
+            <dt>ID server</dt>
+            <dd>{managed.idServer}</dd>
+            <dt>Relay server</dt>
+            <dd>{managed.relayServer || 'named by the ID server'}</dd>
+            <dt>Key</dt>
+            <dd>{managed.key ? 'configured' : 'none'}</dd>
+            <dt>API server</dt>
+            <dd>{defaults.apiServer}</dd>
+          </dl>
+        </>
+      ) : (
+        <>
+          <p class="muted" style={{ marginTop: 0 }}>
+            Leave a field empty to use the value provided by this site.
+          </p>
+          {serverField('idServer', 'ID server', 'host or host:port')}
+          {serverField('relayServer', 'Relay server', 'optional, the ID server names one')}
+          {serverField('key', 'Key', 'server public key (base64)')}
+          {serverField('apiServer', 'API server', 'https://…')}
+        </>
+      )}
 
       <h3 class="muted" style={{ fontSize: 12, textTransform: 'uppercase', marginTop: 18 }}>
         Defaults for new sessions

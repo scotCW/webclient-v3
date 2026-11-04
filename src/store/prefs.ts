@@ -59,6 +59,16 @@ function set(key: string, value: unknown) {
   }
 }
 
+// Peer lists and remembered passwords belong to the signed-in account, so two
+// people sharing a browser do not see each other's devices.
+let scope = ''
+
+export function setStorageScope(user: string) {
+  scope = user
+}
+
+const scoped = (name: string) => (scope ? `v3:u:${scope}:${name}` : `v3:${name}`)
+
 export function loadPrefs(): Prefs {
   return { ...DEFAULT_PREFS, ...get<Partial<Prefs>>('v3:prefs', {}) }
 }
@@ -78,43 +88,43 @@ export function myId(): string {
 }
 
 export function recentPeers(): PeerRecord[] {
-  return get<PeerRecord[]>('v3:recent', [])
+  return get<PeerRecord[]>(scoped('recent'), [])
 }
 
 export function rememberPeer(rec: PeerRecord) {
   const list = recentPeers().filter((p) => p.id !== rec.id)
   const old = recentPeers().find((p) => p.id === rec.id)
   list.unshift({ ...old, ...rec, lastConnected: Date.now() })
-  set('v3:recent', list.slice(0, 50))
+  set(scoped('recent'), list.slice(0, 50))
 }
 
 export function forgetPeer(id: string) {
-  set('v3:recent', recentPeers().filter((p) => p.id !== id))
+  set(scoped('recent'), recentPeers().filter((p) => p.id !== id))
   setFavorite(id, false)
   setSavedPassword(id, null)
 }
 
 export function favorites(): string[] {
-  return get<string[]>('v3:favorites', [])
+  return get<string[]>(scoped('favorites'), [])
 }
 
 export function setFavorite(id: string, on: boolean) {
   const f = new Set(favorites())
   if (on) f.add(id)
   else f.delete(id)
-  set('v3:favorites', [...f])
+  set(scoped('favorites'), [...f])
 }
 
 export function savedPassword(id: string): string | null {
-  return get<Record<string, string>>('v3:passwords', {})[id] ?? null
+  return get<Record<string, string>>(scoped('passwords'), {})[id] ?? null
 }
 
 /** Store (or with null, forget) a peer's salted password hash, base64. */
 export function setSavedPassword(id: string, hashB64: string | null) {
-  const all = get<Record<string, string>>('v3:passwords', {})
+  const all = get<Record<string, string>>(scoped('passwords'), {})
   if (hashB64) all[id] = hashB64
   else delete all[id]
-  set('v3:passwords', all)
+  set(scoped('passwords'), all)
 }
 
 export function setPeerAlias(id: string, alias: string) {
@@ -122,6 +132,6 @@ export function setPeerAlias(id: string, alias: string) {
   const p = list.find((x) => x.id === id)
   if (p) {
     p.alias = alias || undefined
-    set('v3:recent', list)
+    set(scoped('recent'), list)
   }
 }

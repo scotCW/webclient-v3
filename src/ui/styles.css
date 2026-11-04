@@ -874,3 +874,17 @@ textarea:focus {
   min-height: 0;
   padding: 6px;
 }
+
+/* ------------------------------------------------------------ sign-in */
+
+.signin-page {
+  display: grid;
+  place-items: center;
+  min-height: 100%;
+  width: 100%;
+  padding: 16px;
+}
+
+.signin-card {
+  width: min(400px, 100%);
+}
