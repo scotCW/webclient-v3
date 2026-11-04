@@ -51,6 +51,9 @@ export interface SharedPeer {
 
 const TOKEN = 'v3:access-token'
 const USER = 'v3:user'
+// The admin UI served by the same API keeps its sign-in here; both use the same tokens.
+const ADMIN_TOKEN = 'access_token'
+const ADMIN_TOKEN_COPY = 'wc-option:local:access_token'
 
 export class ApiError extends Error {}
 
@@ -64,6 +67,30 @@ export function accessToken(): string {
   } catch {
     return ''
   }
+}
+
+/** The admin UI's token on this origin, if it is signed in. */
+export function adminToken(): string {
+  try {
+    return localStorage.getItem(ADMIN_TOKEN) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * Single sign-on with the admin UI: take over its token when we have none of our
+ * own (or ours is no longer valid). Returns false when there is nothing to adopt.
+ */
+export function adoptAdminToken(): boolean {
+  const t = adminToken()
+  if (!t || t === accessToken()) return false
+  try {
+    localStorage.setItem(TOKEN, t)
+  } catch {
+    return false
+  }
+  return true
 }
 
 export function storedUser(): ApiUser | null {
@@ -166,10 +193,20 @@ export async function oidcPoll(code: string): Promise<ApiUser | null> {
   return res.user ?? null
 }
 
+/** Sign out everywhere on this site: the token is shared with the admin UI. */
 export async function logout() {
+  const token = accessToken()
   try {
     await request('POST', '/api/logout', { id: myId(), uuid: myId() })
   } finally {
+    try {
+      if (adminToken() === token) {
+        localStorage.removeItem(ADMIN_TOKEN)
+        localStorage.removeItem(ADMIN_TOKEN_COPY)
+      }
+    } catch {
+      /* storage unavailable */
+    }
     storeLogin('', null)
   }
 }

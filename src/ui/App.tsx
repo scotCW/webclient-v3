@@ -1,6 +1,6 @@
 import { FolderOpen, House, LogIn, Monitor, SquareTerminal, X } from 'lucide-preact'
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
-import { ApiError, ApiUser, accessToken, currentUser, managedServer, onSignedOut, resolveShareToken } from '../api/client'
+import { ApiError, ApiUser, accessToken, adoptAdminToken, currentUser, managedServer, onSignedOut, resolveShareToken } from '../api/client'
 import { setManagedServer } from '../core/config'
 import type { SessionKind } from '../core/session'
 import { randomId } from '../core/util'
@@ -99,6 +99,25 @@ export function App() {
     if (link) actions.open(link.kind, link.id)
   }
 
+  /** Our own token if it is still valid, otherwise the admin UI's (single sign-on). */
+  const restoreSignIn = async (): Promise<ApiUser | null> => {
+    if (accessToken()) {
+      try {
+        return await currentUser()
+      } catch (e) {
+        if (e instanceof ApiError && !/sign in again/i.test(e.message)) setSignInNotice(e.message)
+      }
+    }
+    if (adoptAdminToken()) {
+      try {
+        return await currentUser()
+      } catch {
+        /* the admin UI's token is no longer valid either */
+      }
+    }
+    return null
+  }
+
   const openShare = (token: string) => {
     void resolveShareToken(token)
       .then((sp) =>
@@ -130,17 +149,19 @@ export function App() {
     if (share) {
       setAuth('share')
       openShare(share)
-    } else if (!accessToken()) {
-      setAuth('signedOut')
     } else {
-      void currentUser()
-        .then(enter)
-        .catch((e) => {
-          setSignInNotice(e instanceof ApiError && !/sign in again/i.test(e.message) ? e.message : '')
-          setAuth('signedOut')
-        })
+      void restoreSignIn().then((user) => {
+        if (user) void enter(user)
+        else setAuth('signedOut')
+      })
     }
     window.addEventListener('hashchange', handleHash)
+    // Signing in to the admin UI in another tab signs the web client in too.
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== 'access_token' || !e.newValue || authRef.current !== 'signedOut') return
+      if (adoptAdminToken()) void currentUser().then(enter).catch(() => undefined)
+    }
+    window.addEventListener('storage', onStorage)
     const offSignedOut = onSignedOut(() => {
       setTabs([])
       setActive('home')
@@ -150,6 +171,7 @@ export function App() {
     })
     return () => {
       window.removeEventListener('hashchange', handleHash)
+      window.removeEventListener('storage', onStorage)
       offSignedOut()
     }
   }, [])
