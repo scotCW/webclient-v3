@@ -54,7 +54,7 @@ export function TerminalView(props: { tab: SessionTab; active: boolean }) {
   }, [props.active])
 
   return (
-    <div class={`view terminal-view${props.active ? ' active' : ''}`} style={{ position: 'relative' }}>
+    <div class={`view terminal-view${props.active ? ' active' : ''}`}>
       {error && <div class="error-text" style={{ padding: 8, background: 'var(--panel)' }}>{error}</div>}
       <div ref={host} class="term" />
       <SessionOverlay phase={phase} status={status} closedReason={closedReason} onReconnect={() => setAttempt((a) => a + 1)} onClose={() => app.close(props.tab.key)} />

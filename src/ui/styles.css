@@ -517,7 +517,6 @@ textarea:focus {
 /* ------------------------------------------------------------- remote */
 
 .remote {
-  position: relative;
   flex-direction: column;
   width: 100%;
   background: var(--remote-bg);
@@ -530,6 +529,7 @@ textarea:focus {
   left: 50%;
   transform: translateX(-50%);
   z-index: 10;
+  max-width: calc(100% - 16px);
   display: flex;
   align-items: center;
   gap: 2px;
@@ -538,6 +538,16 @@ textarea:focus {
   border-radius: 0 0 10px 10px;
   box-shadow: 0 4px 16px rgb(0 0 0 / 30%);
   backdrop-filter: blur(6px);
+}
+
+@media (max-width: 820px) {
+  .toolbar .label,
+  .toolbar .sep {
+    display: none;
+  }
+  .toolbar select {
+    max-width: 96px;
+  }
 }
 
 .toolbar.collapsed {

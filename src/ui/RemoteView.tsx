@@ -142,12 +142,18 @@ export function RemoteView(props: { tab: SessionTab; active: boolean }) {
     const canvas = canvasRef.current
     if (!canvas) return null
     const rect = canvas.getBoundingClientRect()
-    if (!rect.width || !rect.height) return null
+    if (!rect.width || !rect.height || !canvas.width || !canvas.height) return null
+    // The picture keeps its aspect ratio inside the canvas box; find where it is drawn.
+    const fit = Math.min(rect.width / canvas.width, rect.height / canvas.height)
+    const drawnW = canvas.width * fit
+    const drawnH = canvas.height * fit
+    const left = rect.left + (rect.width - drawnW) / 2
+    const top = rect.top + (rect.height - drawnH) / 2
     const info = displays[display]
     const w = info?.width || canvas.width
     const h = info?.height || canvas.height
-    const x = ((e.clientX - rect.left) / rect.width) * w
-    const y = ((e.clientY - rect.top) / rect.height) * h
+    const x = ((e.clientX - left) / drawnW) * w
+    const y = ((e.clientY - top) / drawnH) * h
     if (x < 0 || y < 0 || x > w || y > h) return null
     return { x: (info?.x ?? 0) + x, y: (info?.y ?? 0) + y }
   }
