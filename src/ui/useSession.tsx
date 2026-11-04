@@ -22,7 +22,9 @@ export function useSession(tab: SessionTab, attempt: number) {
   const [peer, setPeer] = useState<PeerSummary | null>(null)
 
   useEffect(() => {
-    const s = new Session(tab.peerId, tab.kind, loadServerConfig(), accessToken(), loadPrefs(), tab.preset ?? null)
+    const server = loadServerConfig()
+    if (tab.server) Object.assign(server, { idServer: tab.server.idServer, key: tab.server.key || server.key, relayServer: '' })
+    const s = new Session(tab.peerId, tab.kind, server, accessToken(), loadPrefs(), tab.preset ?? null)
     setSession(s)
     if (import.meta.env.DEV) (window as unknown as { __session: Session }).__session = s
     setPhase('connecting')

@@ -68,9 +68,7 @@ export function Home(props: { revision: number }) {
           const shared = await sharedAddressBooks().catch(() => [])
           const books = [{ guid: personal, name: 'My address book' }, ...shared.map((s) => ({ guid: s.guid, name: s.name }))]
           setAbBooks(books)
-          const guid = abGuid && books.some((b) => b.guid === abGuid) ? abGuid : personal
-          setAbGuid(guid)
-          setAbPeers(await addressBookPeers(guid))
+          setAbGuid((g) => (g && books.some((b) => b.guid === g) ? g : personal))
         } catch (e) {
           setListError(e instanceof Error ? e.message : String(e))
           setAbPeers([])
@@ -84,7 +82,7 @@ export function Home(props: { revision: number }) {
             list.map((d) => ({
               id: d.id,
               name: d.info?.device_name || d.id,
-              sub: [d.user_name || d.user, d.info?.os].filter(Boolean).join(' · '),
+              sub: [d.id, d.info?.username, d.info?.os, d.device_group_name].filter(Boolean).join(' · '),
               platform: d.info?.os,
             })),
           ),
@@ -94,6 +92,17 @@ export function Home(props: { revision: number }) {
           setDevices([])
         })
     }
+  }, [tab, user, props.revision])
+
+  useEffect(() => {
+    if (tab !== 'ab' || !user || !abGuid) return
+    setAbPeers(null)
+    void addressBookPeers(abGuid)
+      .then(setAbPeers)
+      .catch((e: Error) => {
+        setListError(e.message)
+        setAbPeers([])
+      })
   }, [tab, user, abGuid, props.revision])
 
   const recent = recentPeers()

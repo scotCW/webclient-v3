@@ -167,6 +167,7 @@ a {
 .home {
   display: grid;
   grid-template-columns: 300px 1fr;
+  align-content: start;
   gap: 16px;
   width: 100%;
   padding: 16px;

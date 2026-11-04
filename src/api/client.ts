@@ -32,6 +32,7 @@ export interface AbProfile {
 export interface GroupPeer {
   id: string
   info?: { username?: string; device_name?: string; os?: string }
+  device_group_name?: string
   user?: string
   user_name?: string
   note?: string

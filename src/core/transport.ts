@@ -135,7 +135,7 @@ export class Transport {
 }
 
 /** 24-byte nonce: the message counter as little-endian u64, then zeros. */
-function nonceFor(seq: number): Uint8Array {
+export function nonceFor(seq: number): Uint8Array {
   const nonce = new Uint8Array(nacl.secretbox.nonceLength)
   let n = seq
   for (let i = 0; i < 8 && n > 0; i++) {

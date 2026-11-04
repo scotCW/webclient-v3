@@ -1,7 +1,6 @@
 import { FolderOpen, House, Monitor, SquareTerminal, X } from 'lucide-preact'
 import { useEffect, useMemo, useState } from 'preact/hooks'
 import { ApiError, resolveShareToken } from '../api/client'
-import { saveServerOverrides, loadServerOverrides } from '../core/config'
 import type { SessionKind } from '../core/session'
 import { randomId } from '../core/util'
 import { loadPrefs } from '../store/prefs'
@@ -11,17 +10,10 @@ import { FileManager } from './FileManager'
 import { Home } from './Home'
 import { RemoteView } from './RemoteView'
 import { SettingsDialog, applyTheme } from './Settings'
-import { AppActions, AppContext, SessionTab, cleanPeerId } from './state'
+import { AppActions, AppContext, SessionTab, cleanPeerId, presetFrom } from './state'
 import { TerminalView } from './TerminalView'
 
 const KIND_ICON = { remote: Monitor, file: FolderOpen, terminal: SquareTerminal }
-
-/** A base64 salted hash is 32 bytes (44 characters); anything else is a plain password. */
-function presetFrom(password: string): SessionTab['preset'] {
-  if (!password) return undefined
-  if (/^[A-Za-z0-9+/]{43}=$/.test(password)) return { hash: password }
-  return { plain: password }
-}
 
 export function App() {
   const [tabs, setTabs] = useState<SessionTab[]>([])
@@ -36,7 +28,7 @@ export function App() {
     () => ({
       open(kind: SessionKind, peerId: string, opts) {
         const key = randomId()
-        setTabs((t) => [...t, { key, kind, peerId, title: opts?.title || peerId, preset: opts?.preset }])
+        setTabs((t) => [...t, { key, kind, peerId, title: opts?.title || peerId, preset: opts?.preset, server: opts?.server }])
         setActive(key)
       },
       close(key) {
@@ -58,7 +50,15 @@ export function App() {
   )
 
   // Deep links: #/<peer id>, #/<peer id>?files, #/?share_token=… (also used by older links).
+  // Handled on load and whenever the hash changes (a link opened in an existing tab).
   useEffect(() => {
+    const handle = () => openFromHash()
+    handle()
+    window.addEventListener('hashchange', handle)
+    return () => window.removeEventListener('hashchange', handle)
+  }, [])
+
+  const openFromHash = () => {
     const hash = decodeURIComponent(location.hash.replace(/^#\/?/, ''))
     if (!hash) return
     history.replaceState(null, '', location.pathname + location.search)
@@ -67,11 +67,13 @@ export function App() {
     const share = params.get('share_token')
     if (share) {
       void resolveShareToken(share)
-        .then((sp) => {
-          const overrides = loadServerOverrides()
-          if (sp.idServer && !overrides.idServer) saveServerOverrides({ ...overrides, idServer: sp.idServer, key: sp.key || overrides.key })
-          actions.open('remote', sp.peerId, { title: sp.hostname || sp.peerId, preset: presetFrom(sp.password) })
-        })
+        .then((sp) =>
+          actions.open('remote', sp.peerId, {
+            title: sp.hostname || sp.peerId,
+            preset: presetFrom(sp.password),
+            server: sp.idServer ? { idServer: sp.idServer, key: sp.key } : undefined,
+          }),
+        )
         .catch((e) => setNotice(e instanceof ApiError ? e.message : 'Could not open the share link'))
       return
     }
@@ -80,7 +82,7 @@ export function App() {
       const kind: SessionKind = params.has('files') ? 'file' : params.has('terminal') ? 'terminal' : 'remote'
       actions.open(kind, id)
     }
-  }, [])
+  }
 
   // Warn before closing the page with sessions open.
   useEffect(() => {
