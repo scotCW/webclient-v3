@@ -17,6 +17,7 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 import { MouseType, buttonBit, keyEventFor, modifiersOf } from '../core/input'
 import type { DisplayInfo } from '../core/session'
 import { Prefs, loadPrefs } from '../store/prefs'
+import { Dialog } from './components/Dialog'
 import { SessionTab, useApp } from './state'
 import { SessionOverlay, useSession } from './useSession'
 
@@ -51,6 +52,8 @@ export function RemoteView(props: { tab: SessionTab; active: boolean }) {
   const [fullscreen, setFullscreen] = useState(false)
   const [codecLabel, setCodecLabel] = useState('')
   const [fps, setFps] = useState(0)
+  const pendingPaste = useRef<Record<string, unknown> | null>(null)
+  const [pasteBox, setPasteBox] = useState(false)
   const wheelAcc = useRef({ x: 0, y: 0 })
   const buttons = useRef(0)
 
@@ -210,20 +213,33 @@ export function RemoteView(props: { tab: SessionTab; active: boolean }) {
     // Keep a few browser shortcuts working locally only with the toolbar's help.
     const ke = keyEventFor(e, down)
     if (!ke) return
-    e.preventDefault()
-    e.stopPropagation()
     if (down && (e.ctrlKey || e.metaKey) && e.code === 'KeyV' && !prefs.current.disableClipboard) {
-      // Push the local clipboard first so the remote paste uses it.
-      void navigator.clipboard?.readText().then(
-        (text) => {
-          if (text) session!.sendClipboard(text)
+      // Let the browser fire its paste event, which carries the local clipboard
+      // without needing clipboard-read permission; send it before the keystroke.
+      pendingPaste.current = ke
+      setTimeout(() => {
+        if (pendingPaste.current === ke) {
+          pendingPaste.current = null
           session!.sendKey(ke)
-        },
-        () => session!.sendKey(ke),
-      )
+        }
+      }, 300)
       return
     }
+    e.preventDefault()
+    e.stopPropagation()
     session!.sendKey(ke)
+  }
+
+  const onPaste = (e: ClipboardEvent) => {
+    const ke = pendingPaste.current
+    const text = e.clipboardData?.getData('text/plain') ?? ''
+    e.preventDefault()
+    if (text && canInput()) session!.sendClipboard(text)
+    if (ke) {
+      pendingPaste.current = null
+      // Give the remote side a moment to take the new clipboard before pasting.
+      setTimeout(() => session?.sendKey(ke), 50)
+    }
   }
 
   const pasteClipboard = async () => {
@@ -234,7 +250,8 @@ export function RemoteView(props: { tab: SessionTab; active: boolean }) {
         toast('Clipboard sent to the remote side')
       }
     } catch {
-      toast('The browser blocked clipboard access')
+      // Reading the clipboard needs permission; let the user paste instead.
+      setPasteBox(true)
     }
   }
 
@@ -435,6 +452,7 @@ export function RemoteView(props: { tab: SessionTab; active: boolean }) {
         tabIndex={0}
         onKeyDown={onKey(true)}
         onKeyUp={onKey(false)}
+        onPaste={onPaste}
         onContextMenu={(e) => e.preventDefault()}
       >
         <canvas
@@ -499,6 +517,35 @@ export function RemoteView(props: { tab: SessionTab; active: boolean }) {
         ))}
       </div>
       {props.active && loginUi}
+      {pasteBox && (
+        <Dialog title="Send text to the remote clipboard" onClose={() => setPasteBox(false)}>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              const text = ((e.currentTarget as HTMLFormElement).elements.namedItem('clip') as HTMLTextAreaElement).value
+              if (text) {
+                session?.sendClipboard(text)
+                toast('Clipboard sent to the remote side')
+              }
+              setPasteBox(false)
+              screenRef.current?.focus()
+            }}
+          >
+            <p class="muted" style={{ marginTop: 0 }}>
+              This browser does not let the page read your clipboard. Paste the text here (Ctrl+V or ⌘V) and send it.
+            </p>
+            <textarea name="clip" rows={6} style={{ width: '100%' }} autoFocus onKeyDown={(e) => e.stopPropagation()} />
+            <div class="buttons">
+              <button type="button" class="btn" onClick={() => setPasteBox(false)}>
+                Cancel
+              </button>
+              <button type="submit" class="btn primary">
+                Send
+              </button>
+            </div>
+          </form>
+        </Dialog>
+      )}
     </div>
   )
 }
