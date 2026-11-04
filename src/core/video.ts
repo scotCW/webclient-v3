@@ -62,7 +62,23 @@ export class VideoStream {
     private onNeedKeyFrame: () => void,
   ) {}
 
-  async push(videoFrame: Msg) {
+  private chain: Promise<void> = Promise.resolve()
+  private lastKeyRequest = 0
+
+  /** Queue a VideoFrame message; frames are handled strictly in order. */
+  push(videoFrame: Msg): Promise<void> {
+    this.chain = this.chain.then(() => this.handle(videoFrame)).catch(() => undefined)
+    return this.chain
+  }
+
+  private requestKeyFrame() {
+    const now = Date.now()
+    if (now - this.lastKeyRequest < 1000) return
+    this.lastKeyRequest = now
+    this.onNeedKeyFrame()
+  }
+
+  private async handle(videoFrame: Msg) {
     const codec = UNION_TO_CODEC[videoFrame.union as string]
     if (!codec) return
     const frames: Msg[] = videoFrame[videoFrame.union].frames ?? []
@@ -73,7 +89,10 @@ export class VideoStream {
     if (!decoder) return
     for (const f of frames) {
       const key = !!f.key
-      if (this.waitingForKey && !key) continue
+      if (this.waitingForKey && !key) {
+        this.requestKeyFrame()
+        continue
+      }
       this.waitingForKey = false
       // Drop frames rather than build up latency when the decoder falls behind.
       if (!key && decoder.decodeQueueSize > 8) continue
@@ -118,7 +137,7 @@ export class VideoStream {
     this.close()
     this.codec = null
     this.waitingForKey = true
-    this.onNeedKeyFrame()
+    this.requestKeyFrame()
   }
 
   close() {
