@@ -1,0 +1,97 @@
+// Rendezvous (ID server / relay) messages used by this client.
+//
+// Written for this project from the observable wire protocol so it can talk
+// to RustDesk-compatible servers. Only the messages and fields this client
+// sends or reads are declared; protobuf ignores everything else on the wire.
+// Field numbers must match the servers exactly; names are this project's own.
+syntax = "proto3";
+package wire;
+
+enum ConnType {
+  DEFAULT_CONN = 0;
+  FILE_TRANSFER = 1;
+  PORT_FORWARD = 2;
+  RDP = 3;
+  VIEW_CAMERA = 4;
+  TERMINAL = 5;
+}
+
+enum NatType {
+  UNKNOWN_NAT = 0;
+  ASYMMETRIC = 1;
+  SYMMETRIC = 2;
+}
+
+// Ask the ID server to reach a peer.
+message PunchHoleRequest {
+  string id = 1;
+  NatType nat_type = 2;
+  string licence_key = 3;
+  ConnType conn_type = 4;
+  string token = 5;
+  string version = 6;
+  int32 udp_port = 7;
+  bool force_relay = 8;
+}
+
+// The ID server's answer when the peer cannot be reached directly.
+message PunchHoleResponse {
+  bytes socket_addr = 1;
+  bytes pk = 2;
+  enum Failure {
+    ID_NOT_EXIST = 0;
+    OFFLINE = 2;
+    LICENSE_MISMATCH = 3;
+    LICENSE_OVERUSE = 4;
+  }
+  Failure failure = 3;
+  string relay_server = 4;
+  string other_failure = 7;
+}
+
+// Sent to the relay server to join the relayed session.
+message RequestRelay {
+  string id = 1;
+  string uuid = 2;
+  bytes socket_addr = 3;
+  string relay_server = 4;
+  bool secure = 5;
+  string licence_key = 6;
+  ConnType conn_type = 7;
+  string token = 8;
+}
+
+// The ID server's answer telling us which relay session to join.
+message RelayResponse {
+  bytes socket_addr = 1;
+  string uuid = 2;
+  string relay_server = 3;
+  oneof union {
+    string id = 4;
+    bytes pk = 5;
+  }
+  string refuse_reason = 6;
+  string version = 7;
+}
+
+// Ask which of the listed peers are online.
+message OnlineRequest {
+  string id = 1;
+  repeated string peers = 2;
+}
+
+// One bit per requested peer, in request order (LSB first).
+message OnlineResponse {
+  bytes states = 1;
+}
+
+message RendezvousMessage {
+  oneof union {
+    PunchHoleRequest punch_hole_request = 8;
+    PunchHoleResponse punch_hole_response = 11;
+    RequestRelay request_relay = 18;
+    RelayResponse relay_response = 19;
+    OnlineRequest online_request = 23;
+    OnlineResponse online_response = 24;
+  }
+}
